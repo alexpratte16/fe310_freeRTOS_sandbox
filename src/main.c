@@ -56,33 +56,6 @@
 #include "spibus/spibus.h"
 #include "test_task/test_task.h"
 
-extern struct metal_led *led0_red, *led0_green, *led0_blue;
-
-/* Priorities used by the tasks. */
-#if( portUSING_MPU_WRAPPERS == 1 )
-/* Adding portPRIVILEGE_BIT on task priority permit to this task to be executed into privilleged mode
- * if not, the task will not have access to the global variable. if you need to have access to global 
- * variable, you need to define region and change the function to call to create a task. in order to
- * avoid confusion, it is made in a different example (see example-freertos-blinky-pmp)
- */
-#define mainQUEUE_RECEIVE_TASK_PRIORITY		( ( tskIDLE_PRIORITY + 2 ) | portPRIVILEGE_BIT )
-#define	mainQUEUE_SEND_TASK_PRIORITY		( ( tskIDLE_PRIORITY + 1 ) | portPRIVILEGE_BIT )
-#else
-#define mainQUEUE_RECEIVE_TASK_PRIORITY		( tskIDLE_PRIORITY + 2 )
-#define	mainQUEUE_SEND_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
-#endif
-
-/* The 1s value is converted to ticks using the pdMS_TO_TICKS() macro. */
-#define mainQUEUE_TICK_COUNT_FOR_1S			pdMS_TO_TICKS( WAIT_MS )
-
-/* The maximum number items the queue can hold.  The priority of the receiving
-task is above the priority of the sending task, so the receiving task will
-preempt the sending task and remove the queue items each time the sending task
-writes to the queue.  Therefore the queue will never have more than one item in
-it at any time, and even with a queue length of 1, the sending task will never
-find the queue full. */
-#define mainQUEUE_LENGTH					( 1 )
-
 
 
 /*-----------------------------------------------------------*/
@@ -92,20 +65,11 @@ find the queue full. */
  */
 static void prvSetupHardware( void );
 
-/*
- * The tasks as described in the comments at the top of this file.
- */
-static void prvQueueReceiveTask( void *pvParameters );
-static void prvQueueSendTask( void *pvParameters );
 
 /*-----------------------------------------------------------*/
 
 /* The queue used by both tasks. */
-static QueueHandle_t xQueue = NULL;
 
-struct metal_cpu *cpu0;
-struct metal_interrupt *cpu_intr, *tmr_intr;
-struct metal_led *led0_red, *led0_green, *led0_blue;
 struct metal_gpio *gpio0;
 
 #define LED_GPIO 5
@@ -115,45 +79,13 @@ struct metal_gpio *gpio0;
 /*-----------------------------------------------------------*/
 int main( void )
 {
-	TaskHandle_t xHandle_ReceiveTask, xHandle_SendTask, heartbeat_handle, spibus_handle, test_task_handle;
+	TaskHandle_t 	heartbeat_handle, spibus_handle, test_task_handle;
 	const char * const pcMessage = "FreeRTOS Demo start\r\n";
 	const char * const pcMessageEnd = "FreeRTOS Demo end\r\n";
 
 	prvSetupHardware();
 	write( STDOUT_FILENO, pcMessage, strlen( pcMessage ) );
-	#if 0
-	/* Create the queue. */
-	xQueue = xQueueCreate( mainQUEUE_LENGTH, sizeof( uint32_t ) );
 
-	if( xQueue != NULL )
-	{
-		/* Start the two tasks as described in the comments at the top of this
-		file. */
-		xTaskCreate( prvQueueReceiveTask,				/* The function that implements the task. */
-					"Rx", 					/* The text name assigned to the task - for debug only as it is not used by the kernel. */
-					configMINIMAL_STACK_SIZE, 		/* The size of the stack to allocate to the task. */
-					NULL, 					/* The parameter passed to the task - not used in this case. */
-					mainQUEUE_RECEIVE_TASK_PRIORITY, 	/* The priority assigned to the task. */
-					&xHandle_ReceiveTask );					/* The task handle is not required, so NULL is passed. */
-
-		xTaskCreate( prvQueueSendTask, "TX", configMINIMAL_STACK_SIZE, NULL, mainQUEUE_SEND_TASK_PRIORITY, &xHandle_SendTask );
-
-		/* Start the tasks and timer running. */
-		vTaskStartScheduler();
-
-		/* If all is well, the scheduler will now be running, and the following
-		line will never be reached.  If the following line does execute, then
-		there was insufficient FreeRTOS heap memory available for the Idle and/or
-		timer tasks to be created. 
-		or task have stoppped the Scheduler */
-
-		vTaskDelete( xHandle_SendTask );
-		vTaskDelete( xHandle_ReceiveTask );
-		write( STDOUT_FILENO, pcMessageEnd, strlen( pcMessageEnd ) );
-
-
-	}
-	#endif
 	write( STDOUT_FILENO, "init heartbeat task\r\n", strlen( "init heartbeat task\r\n" ) );
 	printf("printf test%d\r\n", 420);
 	heartbeat_handle = heartbeat_init(gpio0);
@@ -166,7 +98,7 @@ int main( void )
 	printf("starting test task\r\n");
 	test_task_handle = test_task_init();
 	printf("test task inited\r\n");
-	
+
 	write( STDOUT_FILENO, "starting scheduler\r\n", strlen( "starting scheduler\r\n" ) );
 	vTaskStartScheduler();
 
@@ -178,106 +110,16 @@ int main( void )
 
 }
 
-/*-----------------------------------------------------------*/
-
-static void prvQueueSendTask( void *pvParameters )
-{
-	TickType_t xNextWakeTime;
-	const unsigned long ulValueToSend = 100UL;
-	BaseType_t xReturned;
-	unsigned int i;
-
-	/* Remove compiler warning about unused parameter. */
-	( void ) pvParameters;
-	( void ) xReturned;
-
-	/* Initialise xNextWakeTime - this only needs to be done once. */
-	xNextWakeTime = xTaskGetTickCount();
-
-	/* For automation test process we limite the number of message to send to 5 then we exit the program */
-	for( i=0 ; i<5 ; i++)
-	{
-	
-		metal_gpio_set_pin(gpio0, LED_GPIO, 1);
-
-		/* Place this task in the blocked state until it is time to run again. */
-		vTaskDelayUntil( &xNextWakeTime, mainQUEUE_TICK_COUNT_FOR_1S );
-
-		/* Send to the queue - causing the queue receive task to unblock and
-		toggle the LED.  0 is used as the block time so the sending operation
-		will not block - it shouldn't need to block as the queue should always
-		be empty at this point in the code. */
-		xReturned = xQueueSend( xQueue, &ulValueToSend, 0U );
-		configASSERT( xReturned == pdPASS );
-	}
-	vTaskEndScheduler();
-}
-/*-----------------------------------------------------------*/
-
-static void prvQueueReceiveTask( void *pvParameters )
-{
-	unsigned long ulReceivedValue;
-	const unsigned long ulExpectedValue = 100UL;
-	const char * const pcPassMessage = "Blink\r\n";
-	const char * const pcFailMessage = "Unexpected value received\r\n";
-
-	/* Remove compiler warning about unused parameter. */
-	( void ) pvParameters;
-
-	for( ;; )
-	{
-		/* Wait until something arrives in the queue - this task will block
-		indefinitely provided INCLUDE_vTaskSuspend is set to 1 in
-		FreeRTOSConfig.h. */
-		xQueueReceive( xQueue, &ulReceivedValue, portMAX_DELAY );
-
-		/*  To get here something must have been received from the queue, but
-		is it the expected value?  If it is, toggle the LED. */
-		if( ulReceivedValue == ulExpectedValue )
-		{
-			write( STDOUT_FILENO, pcPassMessage, strlen( pcPassMessage ) );
-			ulReceivedValue = 0U;
-
-			metal_gpio_set_pin(gpio0, HEARTBEAT_PIN, 0);
-		}
-		else
-		{
-			write( STDOUT_FILENO, pcFailMessage, strlen( pcFailMessage ) );
-		}
-	}
-}
-/*-----------------------------------------------------------*/
 
 static void prvSetupHardware( void )
 {
-	const char * const pcWarningMsg = "At least one of LEDs is null.\n";
-	int ret = 0;
-
-	// This demo will toggle LEDs colors so we define them here
-	led0_red = metal_led_get_rgb("LD0", "red");
-	led0_green = metal_led_get_rgb("LD0", "green");
-	led0_blue = metal_led_get_rgb("LD0", "blue");
-	if ((led0_red == NULL) || (led0_green == NULL) || (led0_blue == NULL))
-	{
-		write( STDOUT_FILENO, pcWarningMsg, strlen( pcWarningMsg ) );
-	}
-	else
-	{
-		// Enable each LED
-		metal_led_enable(led0_red);
-		metal_led_enable(led0_green);
-		metal_led_enable(led0_blue);
-
-		gpio0 = metal_gpio_get_device(0);
-		ret = metal_gpio_enable_output(gpio0, HEARTBEAT_PIN);
-		ret = metal_gpio_set_pin(gpio0, HEARTBEAT_PIN, 0);
+	int ret;
 
 
-		// All Off
-		metal_led_on(led0_red);
-		metal_led_on(led0_green);
-		metal_led_on(led0_blue);
-	}
+	gpio0 = metal_gpio_get_device(0);
+	ret = metal_gpio_enable_output(gpio0, HEARTBEAT_PIN);
+	ret = metal_gpio_set_pin(gpio0, HEARTBEAT_PIN, 0);
+
 }
 /*-----------------------------------------------------------*/
 
@@ -295,12 +137,6 @@ void vApplicationMallocFailedHook( void )
 	to query the size of free heap space that remains (although it does not
 	provide information on how the remaining heap might be fragmented). */
 	taskDISABLE_INTERRUPTS();
-
-	if ( led0_red != NULL )
-	{
-		// Red light on
-		metal_led_off(led0_red);
-	}
 
 	_exit(1);
 }
@@ -333,13 +169,6 @@ void vApplicationStackOverflowHook( TaskHandle_t pxTask, char *pcTaskName )
 	write( STDOUT_FILENO, "ERROR Stack overflow on func: ", 30 );
 	write( STDOUT_FILENO, pcTaskName, strlen( pcTaskName ) );
 
-
-	if ( led0_red != NULL )
-	{
-		// Red light on
-		metal_led_off(led0_red);
-	}
-
 	_exit(1);
 }
 /*-----------------------------------------------------------*/
@@ -353,12 +182,6 @@ void vApplicationTickHook( void )
 void vAssertCalled( void )
 {
 	taskDISABLE_INTERRUPTS();
-
-	if ( led0_red != NULL )
-	{
-		// Red light on
-		metal_led_off(led0_red);
-	}
 
 	_exit(1);
 }

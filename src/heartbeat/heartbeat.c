@@ -31,15 +31,19 @@ static void heartbeat_task(void *pvParameters){
 	TickType_t xNextWakeTime = xTaskGetTickCount();
 
     while(1){
-	    write( STDOUT_FILENO, "on\r\n", strlen( "on\r\n" ) );
         if(gpio0_handle != NULL){
             metal_gpio_set_pin(gpio0_handle, HEARTBEAT_PIN, 1);
+        }
+        else{
+            write( STDOUT_FILENO, "on\r\n", strlen( "on\r\n" ) );
         }
 		vTaskDelayUntil( &xNextWakeTime, HEARTBEAT_TICK_COUNT_FOR_500MS );
         if(gpio0_handle != NULL){
             metal_gpio_set_pin(gpio0_handle, HEARTBEAT_PIN, 0);
         }
-	    write( STDOUT_FILENO, "off\r\n", strlen( "off\r\n" ) );
+        else{
+	        write( STDOUT_FILENO, "off\r\n", strlen( "off\r\n" ) );
+        }
         vTaskDelayUntil( &xNextWakeTime, HEARTBEAT_TICK_COUNT_FOR_500MS );
     }
 

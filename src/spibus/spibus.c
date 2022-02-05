@@ -92,6 +92,7 @@ static void spibus_tx_task(void *pvParameters){
 
     spi_base_addr[0x1] =  spi_base_addr[0x1]; //adjust polarity and phase as necesary
     spi_base_addr[0x4] |= 0; //use CS 0
+    spi_base_addr[0x6] |= 2; //set CS mode to HOLD
     spi_base_addr[0x10] = spi_base_addr[0x10]; //adjust frame format as necesary
 
 
