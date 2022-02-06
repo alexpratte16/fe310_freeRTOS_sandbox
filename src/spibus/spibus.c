@@ -18,19 +18,23 @@
 #define SPIBUS_TX_DELAY 2
 #define SPIBUS_TX_TICK_COUNT_FOR_2MS			pdMS_TO_TICKS( SPIBUS_TX_DELAY )
 #define SPIBUS_TEST_BYTE 0xAA
-#define SPIBUS_SPI_1 0x10024000 //I don't like hardcoding this but I will find another way eventually
+#define SPIBUS_SPI_1 0x10024000 // I don't like hardcoding this but I will find another way eventually
 #define SPIBUS_TX_MAX_QUEUE_LEN 64
 #define SPIBUS_MAX_DEVICES 4
 
 struct spibus_device_config spibus_device_configs[SPIBUS_MAX_DEVICES];
 
-struct metal_spi* spi_handle;
+struct metal_spi* spi_handle; // is this needed?
 
-static QueueHandle_t spibus_tx_queue_handle = NULL;
+QueueHandle_t spibus_tx_queue_handle = NULL;
 
+QueueHandle_t spibus_rx_queue_handle[SPIBUS_MAX_DEVICES]; // rx queue for each device?
 
 static void spibus_tx_task(void *pvParameters);
 
+// init spi bus
+// this function is essentially useless because I am resetting the configs 
+// on new device transfer
 uint8_t spibus_init_hw(){
     int ret = 1;
     /* Get SPI 1 */
@@ -54,11 +58,13 @@ uint8_t spibus_init_hw(){
 }
 
 
-//consider diabling interrupts for contiguous transfers
-//int spibus_send(uint8_t cs, uint8_t* buffer, int len){
+// consider diabling interrupts for contiguous transfers
+// adds buffer items to send queue
+// change return value to number of items not stored
+// int spibus_send(uint8_t cs, uint8_t* buffer, int len){
 int spibus_send(uint8_t* buffer, int len){
     int ret = 0;
-    if(len > SPIBUS_TX_MAX_QUEUE_LEN){
+    if(len > uxQueueSpacesAvailable(spibus_tx_queue_handle)){
         return -1;
     }
     //struct spibus_packet send = {cs, buffer[ibuff]};
@@ -71,11 +77,15 @@ int spibus_send(uint8_t* buffer, int len){
     }
     return 0;
 }
-
+// look into queue of cs device fill buffer with as many as possible or len, whichever is shorter
+// int spibus_receive(uint8_t cs, uint8_t* buffer, int len){
 int spibus_receive(uint8_t* buffer, int len){
     return 0;
 
 }
+
+// initialize spibus_tx_task, return task handle
+// add an interrupt for receive
 TaskHandle_t spibus_init(void){
     TaskHandle_t spibus_task_handle = NULL;
 
@@ -93,20 +103,23 @@ TaskHandle_t spibus_init(void){
 
     return spibus_task_handle;
 }
-//this should be done while no transfers are happening AKA only at beginning 
+
+// load cs device from spibus_device_configs[cs] into peripheral 
 spibus_load_device_config(uint8_t cs, int* base_addr){
     if(cs >= SPIBUS_MAX_DEVICES){
         return -1;
     }
-    //disable interrupts
+    // disable interrupts
 
-    //load values from spibus_device_configs[cs]
+    // load values from spibus_device_configs[cs]
 
-    //enable interrupts
+    // enable interrupts
 
     return 0;
 }
 
+//load config into spibus_device_configs[cs]
+// this should be done while no transfers are happening AKA only at beginning 
 int spibus_set_device_config(uint8_t cs, struct spibus_device_config config){
     if(cs >= SPIBUS_MAX_DEVICES){
         return -1;
@@ -116,6 +129,7 @@ int spibus_set_device_config(uint8_t cs, struct spibus_device_config config){
     return 0;
 }
 
+//spibus tx task waits for womething to go onto the queue and then sends it if there is space
 static void spibus_tx_task(void *pvParameters){
 
     volatile int* spi_base_addr  = (volatile int*)pvParameters;
@@ -142,6 +156,10 @@ static void spibus_tx_task(void *pvParameters){
         //    spibus_load_device_config(last_cs, spi_base_addr);
         //}
         
+
+        /*
+            HOW DO I MAKE SURE THERE IS NOTHING IN THE TX FIFO?????
+        */
 
 		//vTaskDelayUntil( &xNextWakeTime, SPIBUS_TX_TICK_COUNT_FOR_2MS );
         //make sure fifo isnt full, in rxdata reg 31st bit
