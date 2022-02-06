@@ -91,13 +91,13 @@ int main( void )
 	heartbeat_handle = heartbeat_init(gpio0);
 	write( STDOUT_FILENO, "heartbeat task inited\r\n", strlen("heartbeat task inited\r\n") );
 
-	printf("starting spibus task\r\n");
+	printf("init spibus task\r\n");
 	spibus_handle = spibus_init();
 	printf("spibus task inited\r\n");
 
-	printf("starting test task\r\n");
+	printf("init test task task\r\n");
 	test_task_handle = test_task_init();
-	printf("test task inited\r\n");
+	printf("test task task inited\r\n");
 
 	write( STDOUT_FILENO, "starting scheduler\r\n", strlen( "starting scheduler\r\n" ) );
 	vTaskStartScheduler();

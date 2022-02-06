@@ -7,9 +7,10 @@
 #include <metal/machine.h>
 
 /* std lib include */
-#include "stdio.h"
-#include "unistd.h"
+#include <stdio.h>
+#include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
 
 
 /* defines */
@@ -19,9 +20,11 @@
 #define SPIBUS_TEST_BYTE 0xAA
 #define SPIBUS_SPI_1 0x10024000 //I don't like hardcoding this but I will find another way eventually
 #define SPIBUS_TX_MAX_QUEUE_LEN 64
+#define SPIBUS_MAX_DEVICES 4
+
+struct spibus_device_config spibus_device_configs[SPIBUS_MAX_DEVICES];
 
 struct metal_spi* spi_handle;
-
 
 static QueueHandle_t spibus_tx_queue_handle = NULL;
 
@@ -50,12 +53,17 @@ uint8_t spibus_init_hw(){
     return ret;
 }
 
+
+//consider diabling interrupts for contiguous transfers
+//int spibus_send(uint8_t cs, uint8_t* buffer, int len){
 int spibus_send(uint8_t* buffer, int len){
     int ret = 0;
     if(len > SPIBUS_TX_MAX_QUEUE_LEN){
         return -1;
     }
+    //struct spibus_packet send = {cs, buffer[ibuff]};
     for(int ibuf = 0; ibuf < len; ibuf++){
+        //ret = xQueueSend( spibus_tx_queue_handle, &send, 0U );
         ret = xQueueSend( spibus_tx_queue_handle, buffer+ibuf, 0U );
         if(ret != pdPASS){
             return ret;
@@ -79,29 +87,62 @@ TaskHandle_t spibus_init(void){
     int* spi_base_addr = (int*)SPIBUS_SPI_1; 
     printf("got spibus addr: 0x%X\r\n", (unsigned int)spi_base_addr);
     spibus_tx_queue_handle = xQueueCreate( SPIBUS_TX_MAX_QUEUE_LEN, sizeof(uint8_t));
+    //spibus_tx_queue_handle = xQueueCreate( SPIBUS_TX_MAX_QUEUE_LEN, sizeof(struct spibus_packet));
 
     xTaskCreate(spibus_tx_task, "spibus_tx", configMINIMAL_STACK_SIZE, spi_base_addr, SPIBUS_TX_TASK_PRIORITY, &spibus_task_handle );
 
     return spibus_task_handle;
 }
+//this should be done while no transfers are happening AKA only at beginning 
+spibus_load_device_config(uint8_t cs, int* base_addr){
+    if(cs >= SPIBUS_MAX_DEVICES){
+        return -1;
+    }
+    //disable interrupts
+
+    //load values from spibus_device_configs[cs]
+
+    //enable interrupts
+
+    return 0;
+}
+
+int spibus_set_device_config(uint8_t cs, struct spibus_device_config config){
+    if(cs >= SPIBUS_MAX_DEVICES){
+        return -1;
+    }
+    spibus_device_configs[cs] = config;
+
+    return 0;
+}
 
 static void spibus_tx_task(void *pvParameters){
 
     volatile int* spi_base_addr  = (volatile int*)pvParameters;
-    uint8_t recv = 0;
+    uint8_t recv = 0; 
+    //spibus_packet_t recv = 0; 
 
     spi_base_addr[0x1] =  spi_base_addr[0x1]; //adjust polarity and phase as necesary
     spi_base_addr[0x4] |= 0; //use CS 0
     spi_base_addr[0x6] |= 2; //set CS mode to HOLD
     spi_base_addr[0x10] = spi_base_addr[0x10]; //adjust frame format as necesary
 
-
+    uint8_t last_cs = SPIBUS_MAX_DEVICES; //make sure we load a new config on first transfer
 
     while(1){
-        //a delay for now, just testing
-        //should implement an input queue as well with spibus_send
-        //should pend on queue till there is something to send
+        
+
+        //wait for something to show up on the queue
         xQueueReceive(spibus_tx_queue_handle, &recv, portMAX_DELAY );
+
+        //if(last_cs != recv.cs){
+        //    need to make sure FIFO is clear before loading new config
+        //    figure that out!
+        //    last_cs != recv.cs
+        //    spibus_load_device_config(last_cs, spi_base_addr);
+        //}
+        
+
 		//vTaskDelayUntil( &xNextWakeTime, SPIBUS_TX_TICK_COUNT_FOR_2MS );
         //make sure fifo isnt full, in rxdata reg 31st bit
         //pend until there is room
