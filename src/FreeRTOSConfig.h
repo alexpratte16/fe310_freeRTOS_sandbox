@@ -54,7 +54,7 @@
  * 
  * configTICK_RATE_HZ = 100 means a Tick every 10ms.
  */
-#define configTICK_RATE_HZ			( ( TickType_t ) 100 )
+#define configTICK_RATE_HZ			( ( TickType_t ) 1000 )
 #define configMAX_PRIORITIES			( 7 )
 /*
  * configMINIMAL_STACK_SIZE must be a value greater than the stack use by 

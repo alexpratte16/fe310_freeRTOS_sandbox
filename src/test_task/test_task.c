@@ -19,7 +19,9 @@ static void test_task_task(void *pvParameters){
     TickType_t xNextWakeTime = xTaskGetTickCount();
 
     while(1){
-        spibus_send(to_send_spi, sizeof(to_send_spi)/sizeof(uint8_t));
+        spibus_send(0, to_send_spi, (sizeof(to_send_spi)/sizeof(uint8_t)));
+        spibus_send(1, to_send_spi, (sizeof(to_send_spi)/sizeof(uint8_t)));
+
         vTaskDelayUntil( &xNextWakeTime, TEST_TASK_TICK_COUNT_FOR_250MS );
     }
 }
